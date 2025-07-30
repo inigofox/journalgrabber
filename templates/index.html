@@ -1,0 +1,347 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Journal Grabber{% endblock %}
+
+{% block header %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- Summary Cards -->
+    <div class="col-md-3 mb-4">
+        <div class="card bg-primary text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4>{{ profiles|length }}</h4>
+                        <p class="mb-0">Search Profiles</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-search fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3 mb-4">
+        <div class="card bg-success text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 id="totalDownloads">{{ recent_downloads|length }}</h4>
+                        <p class="mb-0">Total Downloads</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-download fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3 mb-4">
+        <div class="card bg-info text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4>{{ profiles|selectattr('is_active')|list|length }}</h4>
+                        <p class="mb-0">Active Profiles</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-play fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3 mb-4">
+        <div class="card bg-warning text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 id="lastRunAgo">-</h4>
+                        <p class="mb-0">Last Run</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-clock fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Search Profiles Overview -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Search Profiles</h5>
+                <a href="{{ url_for('profiles') }}" class="btn btn-sm btn-primary">
+                    <i class="fas fa-plus me-1"></i> Add Profile
+                </a>
+            </div>
+            <div class="card-body">
+                {% if profiles %}
+                    {% for profile in profiles %}
+                    <div class="search-profile-card card mb-2 {% if not profile.is_active %}inactive{% endif %}">
+                        <div class="card-body py-2">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="mb-1">{{ profile.name }}</h6>
+                                    <small class="text-muted">
+                                        {% for topic in profile.topics|from_json %}
+                                            <span class="topic-tag">{{ topic }}</span>
+                                        {% endfor %}
+                                    </small>
+                                </div>
+                                <div class="text-end">
+                                    {% if profile.is_active %}
+                                        <span class="badge bg-success status-badge">Active</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary status-badge">Inactive</span>
+                                    {% endif %}
+                                    <br>
+                                    <small class="text-muted">Every {{ profile.frequency_hours }}h</small>
+                                    <br>
+                                    <button class="btn btn-sm btn-outline-primary mt-1" onclick="runProfileNow({{ profile.id }})">
+                                        <i class="fas fa-play"></i> Run Now
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="text-muted text-center">No search profiles configured yet.</p>
+                    <div class="text-center">
+                        <a href="{{ url_for('profiles') }}" class="btn btn-primary">
+                            <i class="fas fa-plus me-1"></i> Create Your First Profile
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Downloads -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Recent Downloads</h5>
+                <button class="btn btn-sm btn-outline-secondary" onclick="showDownloads()">
+                    View All
+                </button>
+            </div>
+            <div class="card-body" style="max-height: 400px; overflow-y: auto;">
+                {% if recent_downloads %}
+                    {% for download in recent_downloads %}
+                    <div class="article-card card mb-2">
+                        <div class="card-body py-2">
+                            <h6 class="mb-1">{{ download.title[:80] }}{% if download.title|length > 80 %}...{% endif %}</h6>
+                            <small class="text-muted">
+                                <i class="fas fa-user me-1"></i>{{ download.authors[:50] }}{% if download.authors|length > 50 %}...{% endif %}
+                            </small>
+                            <br>
+                            <small class="text-muted">
+                                <i class="fas fa-clock me-1"></i>{{ download.downloaded_at.strftime('%Y-%m-%d %H:%M') }}
+                            </small>
+                            <div class="mt-1">
+                                <a href="/downloads/{{ download.file_path.split('/')[-1] }}" 
+                                   class="btn btn-sm btn-outline-primary" target="_blank">
+                                    <i class="fas fa-download me-1"></i> Download
+                                </a>
+                                <span class="badge bg-secondary ms-2">{{ download.arxiv_id }}</span>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="text-muted text-center">No articles downloaded yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Downloads Modal -->
+<div class="modal fade" id="downloadsModal" tabindex="-1" aria-labelledby="downloadsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="downloadsModalLabel">Downloaded Articles</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="downloadsContent">
+                    <div class="text-center">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Add custom filter for JSON parsing in Jinja2 context
+    function parseJSON(str) {
+        try {
+            return JSON.parse(str);
+        } catch (e) {
+            return [];
+        }
+    }
+
+    async function runProfileNow(profileId) {
+        try {
+            const response = await fetch(`/api/run-profile/${profileId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                showAlert(result.message, 'success');
+                // Refresh the page after a short delay
+                setTimeout(() => {
+                    window.location.reload();
+                }, 2000);
+            } else {
+                showAlert(`Error: ${result.error}`, 'danger');
+            }
+        } catch (error) {
+            showAlert(`Error running profile: ${error.message}`, 'danger');
+        }
+    }
+
+    async function showDownloads() {
+        const modal = new bootstrap.Modal(document.getElementById('downloadsModal'));
+        modal.show();
+        
+        try {
+            const response = await fetch('/api/downloads');
+            const data = await response.json();
+            
+            let content = '';
+            if (data.downloads && data.downloads.length > 0) {
+                content = '<div class="row">';
+                data.downloads.forEach(download => {
+                    content += `
+                        <div class="col-md-6 mb-3">
+                            <div class="card article-card">
+                                <div class="card-body">
+                                    <h6 class="card-title">${download.title}</h6>
+                                    <p class="card-text">
+                                        <small class="text-muted">
+                                            <i class="fas fa-user me-1"></i>${download.authors}<br>
+                                            <i class="fas fa-tags me-1"></i>${download.subjects}<br>
+                                            <i class="fas fa-clock me-1"></i>${formatDate(download.downloaded_at)}
+                                        </small>
+                                    </p>
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <span class="badge bg-secondary">${download.arxiv_id}</span>
+                                        <a href="/downloads/${download.file_path.split('/').pop()}" 
+                                           class="btn btn-sm btn-primary" target="_blank">
+                                            <i class="fas fa-download me-1"></i> Download
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+                content += '</div>';
+                
+                if (data.pages > 1) {
+                    content += `
+                        <nav>
+                            <ul class="pagination justify-content-center">
+                                <li class="page-item ${data.current_page === 1 ? 'disabled' : ''}">
+                                    <a class="page-link" href="#" onclick="loadDownloadsPage(${data.current_page - 1})">Previous</a>
+                                </li>
+                    `;
+                    
+                    for (let i = 1; i <= Math.min(data.pages, 5); i++) {
+                        content += `
+                            <li class="page-item ${i === data.current_page ? 'active' : ''}">
+                                <a class="page-link" href="#" onclick="loadDownloadsPage(${i})">${i}</a>
+                            </li>
+                        `;
+                    }
+                    
+                    content += `
+                                <li class="page-item ${data.current_page === data.pages ? 'disabled' : ''}">
+                                    <a class="page-link" href="#" onclick="loadDownloadsPage(${data.current_page + 1})">Next</a>
+                                </li>
+                            </ul>
+                        </nav>
+                    `;
+                }
+            } else {
+                content = '<p class="text-center text-muted">No downloads found.</p>';
+            }
+            
+            document.getElementById('downloadsContent').innerHTML = content;
+            
+        } catch (error) {
+            document.getElementById('downloadsContent').innerHTML = 
+                '<p class="text-center text-danger">Error loading downloads.</p>';
+        }
+    }
+
+    async function loadDownloadsPage(page) {
+        try {
+            const response = await fetch(`/api/downloads?page=${page}`);
+            const data = await response.json();
+            // Update content with new page data...
+            // Implementation similar to showDownloads()
+        } catch (error) {
+            console.error('Error loading page:', error);
+        }
+    }
+
+    // Update last run time
+    function updateLastRun() {
+        const profiles = {{ profiles|tojson }};
+        let lastRun = null;
+        
+        profiles.forEach(profile => {
+            if (profile.last_run) {
+                const runDate = new Date(profile.last_run);
+                if (!lastRun || runDate > lastRun) {
+                    lastRun = runDate;
+                }
+            }
+        });
+        
+        const lastRunElement = document.getElementById('lastRunAgo');
+        if (lastRun) {
+            const now = new Date();
+            const diffHours = Math.floor((now - lastRun) / (1000 * 60 * 60));
+            if (diffHours < 1) {
+                lastRunElement.textContent = 'Just now';
+            } else if (diffHours < 24) {
+                lastRunElement.textContent = `${diffHours}h ago`;
+            } else {
+                lastRunElement.textContent = `${Math.floor(diffHours / 24)}d ago`;
+            }
+        } else {
+            lastRunElement.textContent = 'Never';
+        }
+    }
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        updateLastRun();
+    });
+</script>
+{% endblock %}
