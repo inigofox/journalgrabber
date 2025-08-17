@@ -93,8 +93,10 @@ class ZoteroIntegration:
             created_items = self.zot.create_items([template])
             
             if created_items['successful']:
-                item_key = list(created_items['successful'].keys())[0]
-                print(f"Successfully created Zotero item: {item_key}")
+                # Fix: Get the actual item key from the response
+                item_info = created_items['successful']['0']  # The key '0' is the index, not the item key
+                item_key = item_info['key']  # Get the actual Zotero item key
+                print(f"Successfully created Zotero item with key: {item_key}")
                 
                 # If PDF provided, attach it
                 if pdf_path and self._file_exists(pdf_path):
@@ -130,78 +132,122 @@ class ZoteroIntegration:
             
             print(f"Attaching PDF to Zotero item: {parent_item_key}")
             print(f"PDF path: {pdf_path}")
+            print(f"PDF file size: {os.path.getsize(pdf_path)} bytes")
             
-            # Use attachment_simple which handles the file upload properly
+            # Get the file info
+            filename = os.path.basename(pdf_path)
+            filesize = os.path.getsize(pdf_path)
+            
+            # First attempt: Use attachment_simple which is the standard pyzotero method
             try:
-                # attachment_simple expects a list of file paths
-                result = self.zot.attachment_simple([pdf_path], parentid=parent_item_key)
+                print(f"Attempting attachment_simple with file: {filename}")
+                # attachment_simple in pyzotero expects a list of paths and the parent item key
+                result = self.zot.attachment_simple([pdf_path], parent_item_key)
                 
                 if result:
-                    print(f"PDF successfully attached to Zotero item")
+                    print(f"PDF successfully attached via attachment_simple")
                     return {"success": True, "message": "PDF attached successfully"}
                 else:
                     print("attachment_simple returned False/None")
-                    # Try alternative approach with different parameters
-                    result = self.zot.attachment_simple(pdf_path, parent_item_key)
-                    if result:
-                        print(f"PDF successfully attached (alternative call)")
-                        return {"success": True, "message": "PDF attached successfully"}
-                    return {"success": False, "error": "Failed to attach PDF"}
                     
-            except TypeError as te:
-                # If attachment_simple has different signature, try with just the path
-                print(f"Trying different attachment_simple signature: {te}")
-                result = self.zot.attachment_simple(pdf_path, parent_item_key)
-                if result:
-                    print(f"PDF successfully attached (single file)")
-                    return {"success": True, "message": "PDF attached successfully"}
-                return {"success": False, "error": f"Failed to attach PDF: {str(te)}"}
-                
-        except Exception as e:
-            print(f"Error during PDF attachment: {str(e)}")
-            # Try manual attachment creation as last resort
+            except Exception as e:
+                print(f"attachment_simple failed: {e}")
+            
+            # Second attempt: Try upload_attachment if available (newer pyzotero versions)
             try:
-                # Create attachment metadata manually
-                attachment_data = {
-                    'itemType': 'attachment',
-                    'parentItem': parent_item_key,
-                    'linkMode': 'imported_file',
-                    'title': os.path.basename(pdf_path),
-                    'accessDate': '',
-                    'url': '',
-                    'note': '',
-                    'tags': [],
-                    'collections': [],
-                    'relations': {},
-                    'contentType': 'application/pdf',
-                    'charset': '',
-                    'filename': os.path.basename(pdf_path),
-                    'md5': None,
-                    'mtime': None
-                }
+                print("Attempting upload_attachment method...")
+                # Some versions of pyzotero have this method
+                result = self.zot.upload_attachment(pdf_path, parent_item_key)
                 
-                # Create the attachment item
-                created = self.zot.create_items([attachment_data])
+                if result:
+                    print(f"PDF successfully uploaded via upload_attachment")
+                    return {"success": True, "message": "PDF uploaded successfully"}
+                    
+            except (AttributeError, TypeError) as e:
+                print(f"upload_attachment not available or failed: {e}")
+            
+            # Third attempt: Manual file upload with proper attachment creation
+            try:
+                print("Attempting manual file upload...")
+                
+                # Step 1: Create attachment item with proper linkMode
+                attachment_template = self.zot.item_template('attachment')
+                attachment_template['parentItem'] = parent_item_key
+                attachment_template['linkMode'] = 'imported_file'
+                attachment_template['title'] = filename
+                attachment_template['filename'] = filename
+                attachment_template['contentType'] = 'application/pdf'
+                
+                print(f"Creating attachment item for: {filename}")
+                created = self.zot.create_items([attachment_template])
                 
                 if created and created.get('successful'):
-                    attachment_key = list(created['successful'].keys())[0]
-                    print(f"Attachment metadata created: {attachment_key}")
+                    # Get the attachment key - handle different response formats
+                    if '0' in created['successful']:
+                        attachment_info = created['successful']['0']
+                    else:
+                        # Get the first item if indexed differently
+                        first_key = list(created['successful'].keys())[0]
+                        attachment_info = created['successful'][first_key]
                     
-                    # Now try to upload the file content
-                    with open(pdf_path, 'rb') as f:
-                        file_data = f.read()
-                        # Try to upload using the attachment key
-                        upload_result = self.zot.upload_attachment(file_data, attachment_key)
-                        if upload_result:
-                            print("PDF content uploaded successfully")
+                    attachment_key = attachment_info.get('key') or attachment_info.get('data', {}).get('key')
+                    
+                    if not attachment_key:
+                        print(f"Could not extract attachment key from response: {attachment_info}")
+                        return {"success": False, "error": "Failed to get attachment key"}
+                    
+                    print(f"Attachment item created with key: {attachment_key}")
+                    
+                    # Step 2: Try to upload the actual file using different methods
+                    try:
+                        # Method 1: file_upload_auth + upload_file (if available)
+                        print("Trying file_upload_auth method...")
+                        upload_auth = self.zot.file_upload_auth(
+                            attachment_key,
+                            filename=filename,
+                            filesize=filesize,
+                            mtime=int(os.path.getmtime(pdf_path))
+                        )
+                        
+                        if upload_auth:
+                            with open(pdf_path, 'rb') as f:
+                                upload_result = self.zot.upload_file(f, upload_auth)
+                            
+                            if upload_result:
+                                print("PDF file uploaded successfully via file_upload_auth")
+                                return {"success": True, "message": "PDF uploaded successfully"}
+                    except (AttributeError, KeyError) as auth_error:
+                        print(f"file_upload_auth method not available: {auth_error}")
+                    
+                    # Method 2: Direct attachment upload (fallback)
+                    try:
+                        print("Trying direct attachment upload...")
+                        with open(pdf_path, 'rb') as f:
+                            result = self.zot.upload_attachment(f, attachment_key)
+                        if result:
+                            print("PDF uploaded via direct attachment upload")
                             return {"success": True, "message": "PDF uploaded successfully"}
+                    except Exception as direct_error:
+                        print(f"Direct upload failed: {direct_error}")
                     
-                    return {"success": True, "message": "Attachment created (metadata only)"}
+                    # If we created the attachment but couldn't upload the file
+                    print("Warning: Attachment metadata created but file upload failed")
+                    return {"success": True, "message": "Attachment created (metadata only, file upload failed)"}
                 else:
-                    return {"success": False, "error": f"Failed to create attachment: {created}"}
+                    print(f"Failed to create attachment item: {created}")
+                    return {"success": False, "error": "Failed to create attachment item"}
                     
-            except Exception as e2:
-                return {"success": False, "error": f"PDF attachment failed completely: {str(e2)}"}
+            except Exception as e:
+                print(f"Manual upload failed with error: {e}")
+                import traceback
+                traceback.print_exc()
+                return {"success": False, "error": f"PDF attachment failed: {str(e)}"}
+                
+        except Exception as e:
+            print(f"Unexpected error during PDF attachment: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return {"success": False, "error": f"PDF attachment failed: {str(e)}"}
     
     def _file_exists(self, file_path):
         """Check if file exists and is readable"""
