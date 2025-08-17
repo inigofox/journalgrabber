@@ -16,28 +16,51 @@ class ArxivScraper:
         self.base_url = "http://export.arxiv.org/api/query"
         self.download_url = "https://arxiv.org/pdf/"
         
-    def search_articles(self, topics, max_results=50, days_back=7):
+    def search_articles(self, topics, max_results=50, days_back=30):
         """
         Search for articles on arXiv based on topics
         
         Args:
             topics (list): List of search terms/topics
             max_results (int): Maximum number of results to return
-            days_back (int): How many days back to search
+            days_back (int): How many days back to search (default 30 for better results)
             
         Returns:
             list: List of article dictionaries
         """
         
-        # Build search query
-        search_terms = []
+        # Separate category codes from keyword terms
+        category_terms = []
+        keyword_terms = []
+        
         for topic in topics:
-            # Search in title, abstract, and categories
-            search_terms.append(f'(ti:"{topic}" OR abs:"{topic}" OR cat:"{topic}")')
+            # Check if it looks like a category code (contains dot or specific prefixes)
+            if ('.' in topic and any(topic.startswith(prefix) for prefix in ['cs.', 'math.', 'physics.', 'astro-ph', 'cond-mat', 'quant-ph', 'stat.'])) or topic in ['cs', 'math', 'physics']:
+                category_terms.append(topic)
+            else:
+                keyword_terms.append(topic)
         
-        query = " OR ".join(search_terms)
+        # Build search query parts
+        search_parts = []
         
-        # Add date filter for recent articles
+        # Add category search
+        if category_terms:
+            cat_query = " OR ".join([f'cat:"{cat}"' for cat in category_terms])
+            search_parts.append(f'({cat_query})')
+        
+        # Add keyword search (in title and abstract)
+        if keyword_terms:
+            for keyword in keyword_terms:
+                keyword_query = f'(ti:"{keyword}" OR abs:"{keyword}")'
+                search_parts.append(keyword_query)
+        
+        # Combine all search parts
+        if search_parts:
+            query = " OR ".join(search_parts)
+        else:
+            query = "all"  # Fallback to search all if no valid terms
+        
+        # Add date filter for recent articles (increased to 30 days for better results)
         start_date = (datetime.now() - timedelta(days=days_back)).strftime('%Y%m%d')
         query += f' AND submittedDate:[{start_date}* TO *]'
         
@@ -51,11 +74,39 @@ class ArxivScraper:
         
         url = f"{self.base_url}?{urlencode(params)}"
         
+        print(f"ArXiv search URL: {url}")
+        print(f"Search query: {query}")
+        
         try:
             response = requests.get(url, timeout=30)
             response.raise_for_status()
             
-            return self._parse_arxiv_response(response.content)
+            print(f"ArXiv response status: {response.status_code}")
+            print(f"Response content length: {len(response.content)}")
+            
+            articles = self._parse_arxiv_response(response.content)
+            print(f"Parsed {len(articles)} articles from response")
+            
+            # If no articles found with date filter, try without it
+            if len(articles) == 0 and days_back < 365:
+                print("No results with date filter, trying without date restriction...")
+                
+                # Remove date filter
+                query_no_date = query.split(' AND submittedDate:')[0]
+                params_no_date = params.copy()
+                params_no_date['search_query'] = query_no_date
+                params_no_date['max_results'] = min(max_results, 20)  # Reduce results for broader search
+                
+                url_no_date = f"{self.base_url}?{urlencode(params_no_date)}"
+                print(f"Trying without date filter: {url_no_date}")
+                
+                response_no_date = requests.get(url_no_date, timeout=30)
+                response_no_date.raise_for_status()
+                
+                articles = self._parse_arxiv_response(response_no_date.content)
+                print(f"Found {len(articles)} articles without date filter")
+            
+            return articles
             
         except requests.exceptions.RequestException as e:
             print(f"Error searching arXiv: {e}")

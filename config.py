@@ -3,6 +3,10 @@ Configuration settings for Journal Grabber application
 """
 
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file if it exists
+load_dotenv()
 
 class Config:
     # Flask configuration
@@ -28,3 +32,9 @@ class Config:
     # Security settings
     ALLOWED_EXTENSIONS = {'pdf'}
     MAX_CONTENT_LENGTH = MAX_DOWNLOAD_SIZE_MB * 1024 * 1024
+    
+    # Zotero API settings
+    ZOTERO_API_URL = 'https://api.zotero.org'
+    ZOTERO_API_KEY = os.environ.get('ZOTERO_API_KEY', '')
+    ZOTERO_USER_ID = os.environ.get('ZOTERO_USER_ID', '')
+    ZOTERO_GROUP_ID = os.environ.get('ZOTERO_GROUP_ID', '')  # Optional: for group libraries

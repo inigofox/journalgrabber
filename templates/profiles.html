@@ -12,6 +12,34 @@
     </button>
 </div>
 
+<!-- Zotero Integration Status -->
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">
+                    <i class="fas fa-bookmark me-2"></i>Zotero Integration
+                </h6>
+                <div>
+                    <button class="btn btn-sm btn-outline-info me-2" onclick="getZoteroUserID()" title="Get your numeric User ID">
+                        <i class="fas fa-user me-1"></i> Get User ID
+                    </button>
+                    <button class="btn btn-sm btn-outline-primary" onclick="testZoteroConnection()">
+                        <i class="fas fa-plug me-1"></i> Test Connection
+                    </button>
+                </div>
+            </div>
+            <div class="card-body" id="zoteroStatus">
+                <div class="d-flex justify-content-center">
+                    <div class="spinner-border spinner-border-sm" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="row" id="profilesContainer">
     {% for profile in profiles %}
     <div class="col-md-6 mb-4" data-profile-id="{{ profile.id }}">
@@ -410,5 +438,104 @@
         // Reset topics
         setTopics([]);
     });
+
+    // Load Zotero status on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        loadZoteroStatus();
+    });
+
+    async function loadZoteroStatus() {
+        try {
+            const response = await fetch('/api/zotero/config');
+            const config = await response.json();
+            
+            const statusDiv = document.getElementById('zoteroStatus');
+            
+            if (config.configured) {
+                statusDiv.innerHTML = `
+                    <div class="d-flex align-items-center">
+                        <div class="text-success me-3">
+                            <i class="fas fa-check-circle fa-2x"></i>
+                        </div>
+                        <div>
+                            <h6 class="text-success mb-1">Zotero Integration Active</h6>
+                            <p class="mb-0 text-muted">
+                                <strong>User ID:</strong> ${config.user_id}<br>
+                                <strong>API Key:</strong> ${config.has_api_key ? 'Configured' : 'Not Set'}<br>
+                                ${config.group_id ? '<strong>Group Library:</strong> ' + config.group_id : '<strong>Personal Library</strong>'}
+                            </p>
+                        </div>
+                    </div>
+                `;
+            } else {
+                statusDiv.innerHTML = `
+                    <div class="d-flex align-items-center">
+                        <div class="text-warning me-3">
+                            <i class="fas fa-exclamation-triangle fa-2x"></i>
+                        </div>
+                        <div>
+                            <h6 class="text-warning mb-1">Zotero Not Configured</h6>
+                            <p class="mb-2 text-muted">
+                                To enable Zotero integration, set these environment variables:
+                            </p>
+                            <code class="small">
+                                ZOTERO_API_KEY=your_api_key<br>
+                                ZOTERO_USER_ID=your_user_id
+                            </code>
+                            <p class="mt-2 mb-0 small text-muted">
+                                Get your API key from: <a href="https://www.zotero.org/settings/keys" target="_blank">https://www.zotero.org/settings/keys</a>
+                            </p>
+                        </div>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            document.getElementById('zoteroStatus').innerHTML = `
+                <div class="text-danger">
+                    <i class="fas fa-times-circle me-2"></i>
+                    Error loading Zotero status: ${error.message}
+                </div>
+            `;
+        }
+    }
+
+    async function testZoteroConnection() {
+        try {
+            const response = await fetch('/api/zotero/test');
+            const result = await response.json();
+            
+            if (result.success) {
+                showAlert('Zotero connection successful!', 'success');
+            } else {
+                showAlert('Zotero connection failed: ' + result.error, 'danger');
+            }
+        } catch (error) {
+            showAlert('Connection test failed: ' + error.message, 'danger');
+        }
+    }
+
+    async function getZoteroUserID() {
+        try {
+            const button = event.target;
+            const originalContent = button.innerHTML;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Getting...';
+            button.disabled = true;
+
+            const response = await fetch('/api/zotero/userinfo');
+            const result = await response.json();
+            
+            if (result.success) {
+                showAlert(`Your numeric User ID is: <strong>${result.user_id}</strong><br>Username: ${result.username}<br><br>Update your .env file with:<br><code>ZOTERO_USER_ID=${result.user_id}</code>`, 'success');
+            } else {
+                showAlert('Failed to get User ID: ' + result.error, 'danger');
+            }
+        } catch (error) {
+            showAlert('Error getting User ID: ' + error.message, 'danger');
+        } finally {
+            const button = event.target;
+            button.innerHTML = '<i class="fas fa-user me-1"></i> Get User ID';
+            button.disabled = false;
+        }
+    }
 </script>
 {% endblock %}

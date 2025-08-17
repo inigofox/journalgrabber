@@ -152,6 +152,11 @@
                                    class="btn btn-sm btn-outline-primary" target="_blank">
                                     <i class="fas fa-download me-1"></i> Download
                                 </a>
+                                <button class="btn btn-sm btn-outline-success ms-1" 
+                                        onclick="sendToZotero({{ download.id }})"
+                                        title="Send to Zotero">
+                                    <i class="fas fa-bookmark me-1"></i> Zotero
+                                </button>
                                 <span class="badge bg-secondary ms-2">{{ download.arxiv_id }}</span>
                             </div>
                         </div>
@@ -249,10 +254,17 @@
                                     </p>
                                     <div class="d-flex justify-content-between align-items-center">
                                         <span class="badge bg-secondary">${download.arxiv_id}</span>
-                                        <a href="/downloads/${download.file_path.split('/').pop()}" 
-                                           class="btn btn-sm btn-primary" target="_blank">
-                                            <i class="fas fa-download me-1"></i> Download
-                                        </a>
+                                        <div>
+                                            <a href="/downloads/${download.file_path.split('/').pop()}" 
+                                               class="btn btn-sm btn-primary" target="_blank">
+                                                <i class="fas fa-download me-1"></i> Download
+                                            </a>
+                                            <button class="btn btn-sm btn-outline-success ms-1" 
+                                                    onclick="sendToZotero(${download.id})"
+                                                    title="Send to Zotero">
+                                                <i class="fas fa-bookmark me-1"></i> Zotero
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -309,9 +321,77 @@
         }
     }
 
+    async function sendToZotero(articleId) {
+        try {
+            // First check if Zotero is configured
+            const configResponse = await fetch('/api/zotero/config');
+            const config = await configResponse.json();
+            
+            if (!config.configured) {
+                showAlert('Zotero integration not configured. Please set ZOTERO_API_KEY and ZOTERO_USER_ID environment variables.', 'warning');
+                return;
+            }
+            
+            // Show loading state
+            const button = event.target.closest('button');
+            const originalText = button.innerHTML;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Sending...';
+            button.disabled = true;
+            
+            const response = await fetch(`/api/zotero/send/${articleId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            const result = await response.json();
+            
+            // Restore button
+            button.innerHTML = originalText;
+            button.disabled = false;
+            
+            if (result.success) {
+                showAlert(result.message, 'success');
+                // Change button to indicate success
+                button.innerHTML = '<i class="fas fa-check me-1"></i> Sent';
+                button.classList.remove('btn-outline-success');
+                button.classList.add('btn-success');
+            } else {
+                showAlert(`Error: ${result.error}`, 'danger');
+            }
+            
+        } catch (error) {
+            showAlert(`Error sending to Zotero: ${error.message}`, 'danger');
+            // Restore button on error
+            if (button) {
+                button.innerHTML = originalText;
+                button.disabled = false;
+            }
+        }
+    }
+
+    async function testZoteroConnection() {
+        try {
+            showAlert('Testing Zotero connection...', 'info');
+            
+            const response = await fetch('/api/zotero/test');
+            const result = await response.json();
+            
+            if (result.success) {
+                showAlert('Zotero connection successful!', 'success');
+            } else {
+                showAlert(`Zotero connection failed: ${result.error}`, 'danger');
+            }
+            
+        } catch (error) {
+            showAlert(`Error testing Zotero: ${error.message}`, 'danger');
+        }
+    }
+
     // Update last run time
     function updateLastRun() {
-        const profiles = {{ profiles|tojson }};
+        const profiles = {{ profiles_json|tojson }};
         let lastRun = null;
         
         profiles.forEach(profile => {

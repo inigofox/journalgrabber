@@ -1,6 +1,18 @@
 # Journal Grabber
 
-A Podman-based Python application for scraping and downloading journal articles from arXiv. The application provides a web interface for managing search preferences and automatically downloads articles based on your topics of interest.
+A Podman-based Python application for scraping and downloading jour### 2. Configure Environment Variables
+
+Instead of editing `docker-compose.yml`, use the `.env` file for security:
+
+```bash
+# In your .env file:
+ZOTERO_API_KEY=your_api_key_here
+ZOTERO_USER_ID=your_numeric_user_id
+# Optional - only if using a group library:
+ZOTERO_GROUP_ID=your_group_id_here
+```
+
+**Important**: Use your numeric User ID, not your username. You can find it in your Zotero profile URL or use the "Get User ID" button in the application.s from arXiv. The application provides a web interface for managing search preferences and automatically downloads articles based on your topics of interest.
 
 ## Features
 
@@ -11,6 +23,7 @@ A Podman-based Python application for scraping and downloading journal articles 
 - 🐳 **Containerized**: Runs in Podman containers for easy deployment
 - 📂 **Organized Downloads**: Articles saved with proper metadata and organization
 - ⏰ **Background Processing**: Continuous monitoring with configurable intervals
+- 📚 **Zotero Integration**: Send articles directly to your Zotero library with one click using the reliable pyzotero library
 
 ## Prerequisites
 
@@ -19,12 +32,34 @@ A Podman-based Python application for scraping and downloading journal articles 
 
 ## Quick Start with Podman
 
-### 1. Build and Run with Podman Compose
+### 1. Configure Environment (Optional)
+
+For easy configuration, create a `.env` file:
+
+```bash
+# Copy the example environment file
+cp .env.example .env
+
+# Edit with your preferred settings
+nano .env  # or use your favorite editor
+```
+
+The `.env` file allows you to set:
+- Zotero API credentials 
+- Search preferences and limits
+- Database and download paths
+- Security settings
+
+### 2. Build and Run with Podman Compose
 
 ```bash
 # Clone the repository
 git clone https://github.com/inigofox/journalgrabber.git
 cd journalgrabber
+
+# Optional: Configure your settings
+cp .env.example .env
+# Edit .env with your Zotero credentials and preferences
 
 # Build and start the application
 podman-compose up --build
@@ -43,6 +78,49 @@ Open your browser and navigate to: `http://localhost:5000`
 2. Create a new profile with your preferences
 3. Configure your search criteria and download settings
 4. Save and activate your profile
+5. **Optional**: Set up Zotero integration to send articles directly to your library
+
+## Zotero Integration Setup
+
+Journal Grabber uses the robust `pyzotero` library for seamless Zotero integration.
+
+To enable one-click sending of articles to your Zotero library:
+
+### 1. Get Your Zotero API Credentials
+
+1. Go to [https://www.zotero.org/settings/keys](https://www.zotero.org/settings/keys)
+2. Log in to your Zotero account
+3. Click "Create new private key"
+4. Give it a name like "Journal Grabber"
+5. Check the permissions you want (usually "Allow write access")
+6. Copy the generated API key
+7. Note your User ID (shown in the key management page)
+
+### 2. Configure Environment Variables
+
+Edit your `docker-compose.yml` file and add your Zotero credentials:
+
+```yaml
+environment:
+  - ZOTERO_API_KEY=your_api_key_here
+  - ZOTERO_USER_ID=your_user_id_here
+  # Optional: for group libraries
+  - ZOTERO_GROUP_ID=your_group_id_here
+```
+
+### 3. Restart the Application
+
+```bash
+podman-compose down
+podman-compose up -d
+```
+
+### 4. Using Zotero Integration
+
+- After setup, you'll see **Zotero** buttons next to downloaded articles
+- Click the button to send the article (with PDF attachment) to your Zotero library
+- The article will appear in your Zotero library with full metadata
+- Check the "Manage Profiles" page to verify your Zotero connection status
 
 ## Configuration Options
 

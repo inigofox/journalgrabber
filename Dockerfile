@@ -20,11 +20,14 @@ RUN apt-get update \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Create downloads directory
-RUN mkdir -p /app/downloads
+# Create downloads and data directories
+RUN mkdir -p /app/downloads /app/data
 
 # Copy application code
 COPY . .
+
+# Copy .env file if it exists (this will be handled gracefully by python-dotenv)
+# The COPY . . above already includes .env if present, but we want to be explicit
 
 # Create a non-root user
 RUN useradd --create-home --shell /bin/bash appuser \
