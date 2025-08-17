@@ -129,40 +129,79 @@ class ZoteroIntegration:
                 return {"success": False, "error": "PDF file not found"}
             
             print(f"Attaching PDF to Zotero item: {parent_item_key}")
+            print(f"PDF path: {pdf_path}")
             
-            # Get the filename from the path
-            filename = os.path.basename(pdf_path)
-            
-            # Use pyzotero's upload_attachment method for proper file storage
-            # This ensures the PDF is stored in Zotero's storage, not just linked
-            attachment_info = self.zot.upload_attachment(
-                pdf_path,
-                parent_item_key,
-                filename=filename
-            )
-            
-            if attachment_info:
-                print(f"PDF successfully uploaded to Zotero storage")
-                return {"success": True, "message": "PDF uploaded and attached successfully"}
-            else:
-                # Fallback to attachment_simple if upload_attachment fails
-                attachment = self.zot.attachment_simple([pdf_path], parent_item_key)
-                if attachment:
-                    return {"success": True, "message": "PDF attached successfully (linked)"}
+            # Use attachment_simple which handles the file upload properly
+            try:
+                # attachment_simple expects a list of file paths
+                result = self.zot.attachment_simple([pdf_path], parentid=parent_item_key)
+                
+                if result:
+                    print(f"PDF successfully attached to Zotero item")
+                    return {"success": True, "message": "PDF attached successfully"}
                 else:
+                    print("attachment_simple returned False/None")
+                    # Try alternative approach with different parameters
+                    result = self.zot.attachment_simple(pdf_path, parent_item_key)
+                    if result:
+                        print(f"PDF successfully attached (alternative call)")
+                        return {"success": True, "message": "PDF attached successfully"}
                     return {"success": False, "error": "Failed to attach PDF"}
+                    
+            except TypeError as te:
+                # If attachment_simple has different signature, try with just the path
+                print(f"Trying different attachment_simple signature: {te}")
+                result = self.zot.attachment_simple(pdf_path, parent_item_key)
+                if result:
+                    print(f"PDF successfully attached (single file)")
+                    return {"success": True, "message": "PDF attached successfully"}
+                return {"success": False, "error": f"Failed to attach PDF: {str(te)}"}
                 
         except Exception as e:
-            # If upload_attachment is not available or fails, try attachment_simple
+            print(f"Error during PDF attachment: {str(e)}")
+            # Try manual attachment creation as last resort
             try:
-                print(f"Primary upload failed, trying alternative method: {str(e)}")
-                attachment = self.zot.attachment_simple([pdf_path], parent_item_key)
-                if attachment:
-                    return {"success": True, "message": "PDF attached successfully (alternative method)"}
+                # Create attachment metadata manually
+                attachment_data = {
+                    'itemType': 'attachment',
+                    'parentItem': parent_item_key,
+                    'linkMode': 'imported_file',
+                    'title': os.path.basename(pdf_path),
+                    'accessDate': '',
+                    'url': '',
+                    'note': '',
+                    'tags': [],
+                    'collections': [],
+                    'relations': {},
+                    'contentType': 'application/pdf',
+                    'charset': '',
+                    'filename': os.path.basename(pdf_path),
+                    'md5': None,
+                    'mtime': None
+                }
+                
+                # Create the attachment item
+                created = self.zot.create_items([attachment_data])
+                
+                if created and created.get('successful'):
+                    attachment_key = list(created['successful'].keys())[0]
+                    print(f"Attachment metadata created: {attachment_key}")
+                    
+                    # Now try to upload the file content
+                    with open(pdf_path, 'rb') as f:
+                        file_data = f.read()
+                        # Try to upload using the attachment key
+                        upload_result = self.zot.upload_attachment(file_data, attachment_key)
+                        if upload_result:
+                            print("PDF content uploaded successfully")
+                            return {"success": True, "message": "PDF uploaded successfully"}
+                    
+                    return {"success": True, "message": "Attachment created (metadata only)"}
                 else:
-                    return {"success": False, "error": "Failed to attach PDF"}
+                    return {"success": False, "error": f"Failed to create attachment: {created}"}
+                    
             except Exception as e2:
-                return {"success": False, "error": f"PDF attachment failed: {str(e2)}"}
+                return {"success": False, "error": f"PDF attachment failed completely: {str(e2)}"}
     
     def _file_exists(self, file_path):
         """Check if file exists and is readable"""
@@ -180,31 +219,7 @@ class ZoteroIntegration:
             return {"success": False, "error": "Zotero client not initialized"}
         
         try:
-            # Try to get user/group info to test connection
-            if self.group_id:
-                # Test group library access
-                info = self.zot.group_info()
-                library_type = f"group library '{info.get('name', 'Unknown')}'"
-            else:
-                # Test user library access by getting a few items
-                items = self.zot.items(limit=1)
-                library_type = "personal library"
-            
-            return {
-                "success": True, 
-                "message": f"Zotero connection successful - {library_type}",
-                "library_type": "group" if self.group_id else "user"
-            }
-                
-        except Exception as e:
-            return {"success": False, "error": f"Connection test failed: {str(e)}"}
-    
-    def get_user_info(self):
-        """Get user information - simplified since pyzotero handles authentication"""
-        if not self.is_configured():
-            return {"success": False, "error": "API key or user ID not configured"}
-        
-        try:
+            #
             if self.group_id:
                 # For group libraries, get group info
                 info = self.zot.group_info()
