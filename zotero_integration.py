@@ -130,16 +130,39 @@ class ZoteroIntegration:
             
             print(f"Attaching PDF to Zotero item: {parent_item_key}")
             
-            # Use pyzotero's attachment method
-            attachment = self.zot.attachment_simple([pdf_path], parent_item_key)
+            # Get the filename from the path
+            filename = os.path.basename(pdf_path)
             
-            if attachment:
-                return {"success": True, "message": "PDF attached successfully"}
+            # Use pyzotero's upload_attachment method for proper file storage
+            # This ensures the PDF is stored in Zotero's storage, not just linked
+            attachment_info = self.zot.upload_attachment(
+                pdf_path,
+                parent_item_key,
+                filename=filename
+            )
+            
+            if attachment_info:
+                print(f"PDF successfully uploaded to Zotero storage")
+                return {"success": True, "message": "PDF uploaded and attached successfully"}
             else:
-                return {"success": False, "error": "Failed to attach PDF"}
+                # Fallback to attachment_simple if upload_attachment fails
+                attachment = self.zot.attachment_simple([pdf_path], parent_item_key)
+                if attachment:
+                    return {"success": True, "message": "PDF attached successfully (linked)"}
+                else:
+                    return {"success": False, "error": "Failed to attach PDF"}
                 
         except Exception as e:
-            return {"success": False, "error": f"PDF attachment failed: {str(e)}"}
+            # If upload_attachment is not available or fails, try attachment_simple
+            try:
+                print(f"Primary upload failed, trying alternative method: {str(e)}")
+                attachment = self.zot.attachment_simple([pdf_path], parent_item_key)
+                if attachment:
+                    return {"success": True, "message": "PDF attached successfully (alternative method)"}
+                else:
+                    return {"success": False, "error": "Failed to attach PDF"}
+            except Exception as e2:
+                return {"success": False, "error": f"PDF attachment failed: {str(e2)}"}
     
     def _file_exists(self, file_path):
         """Check if file exists and is readable"""
